@@ -2,6 +2,7 @@ package di
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 )
 
@@ -16,8 +17,12 @@ type container struct {
 }
 
 // Register implements Container.
-func (c *container) Register(f Factory) error {
-	providerType := reflect.TypeOf(f)
+func (c *container) Register(factory Factory) error {
+	if factory == nil {
+		return errors.New("factory function cannot be nil")
+	}
+
+	providerType := reflect.TypeOf(factory)
 	if providerType.Kind() != reflect.Func {
 		return errors.New("factory must to be a function")
 	}
@@ -26,44 +31,50 @@ func (c *container) Register(f Factory) error {
 		return errors.New("factory must to return exactly two value")
 	}
 
-	depType := providerType.Out(0)
-	c.providers[depType] = f
-	return nil
-}
-
-// Resolve implements Container.
-func (c *container) Resolve(target interface{}) error {
-	targetType := reflect.TypeOf(target)
-
-	if targetType.Kind() != reflect.Ptr {
-		return errors.New("target must be a pointer")
-	}
-
-	elemType := targetType.Elem()
-
-	if instance, found := c.instances[elemType]; found {
-		reflect.ValueOf(target).Elem().Set(reflect.ValueOf(instance))
-		return nil
-	}
-
-	provider, found := c.providers[elemType]
-	if !found {
-		return errors.New("no provider found for " + elemType.String())
-	}
-
-	instance, err := provider(c)
+	instance, err := factory(c)
 	if err != nil {
 		return err
 	}
 
-	c.instances[elemType] = instance
-	reflect.ValueOf(target).Elem().Set(reflect.ValueOf(instance))
+	depType := reflect.TypeOf(instance)
+	if depType.Kind() != reflect.Ptr {
+		return errors.New("factory function must to return a pointer to a struct")
+	}
+
+	c.providers[depType] = factory
+
+	fmt.Printf("Providers: %+v", c.providers)
+	return nil
+}
+
+// Resolve implements Container.
+func (c *container) Resolve(target any) error {
+	ptr := reflect.ValueOf(target)
+	if ptr.Kind() != reflect.Ptr || ptr.IsNil() {
+		return errors.New("target must be a non-nil pointer to a pointer")
+	}
+
+	targetType := ptr.Elem().Type()
+	if targetType.Kind() != reflect.Ptr {
+		targetType = reflect.PointerTo(targetType)
+	}
+
+	factory, exists := c.providers[targetType]
+	if !exists {
+		return fmt.Errorf("no provider found for %s", targetType.String())
+	}
+
+	instance, err := factory(c)
+	if err != nil {
+		return err
+	}
+	ptr.Elem().Set(reflect.ValueOf(instance))
 	return nil
 }
 
 func NewContainer() *container {
 	return &container{
 		providers: make(map[reflect.Type]Factory),
-		instances: make(map[reflect.Type]interface{}),
+		instances: make(map[reflect.Type]any),
 	}
 }

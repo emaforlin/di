@@ -1,20 +1,20 @@
 package di
 
-type mockService struct {
+type MockService struct {
 	value string
 }
 
-func (s mockService) Value() string {
-	return s.value
-}
-
-type MockService interface {
+type IMockService interface {
 	Value() string
 }
 
+func (s MockService) Value() string {
+	return s.value
+}
+
 // MockService factory
-func NewMockService(c Container) (interface{}, error) {
-	return &mockService{
-		value: "Hello DI.",
+func NewMockService(c Container) (any, error) {
+	return &MockService{
+		value: "Hello, DI!",
 	}, nil
 }
