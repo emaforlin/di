@@ -43,32 +43,35 @@ func (c *container) Register(factory Factory) error {
 
 	c.providers[depType] = factory
 
-	fmt.Printf("Providers: %+v", c.providers)
+	fmt.Printf("\nProviders: %+v\n", c.providers)
 	return nil
 }
 
 // Resolve implements Container.
 func (c *container) Resolve(target any) error {
-	ptr := reflect.ValueOf(target)
-	if ptr.Kind() != reflect.Ptr || ptr.IsNil() {
+	targetType := reflect.TypeOf(target)
+	if targetType.Kind() != reflect.Ptr || targetType == nil {
 		return errors.New("target must be a non-nil pointer to a pointer")
 	}
 
-	targetType := ptr.Elem().Type()
-	if targetType.Kind() != reflect.Ptr {
-		targetType = reflect.PointerTo(targetType)
+	elemType := targetType.Elem()
+
+	if instance, found := c.instances[elemType]; found {
+		reflect.ValueOf(target).Elem().Set(reflect.ValueOf(instance))
+		return nil
 	}
 
-	factory, exists := c.providers[targetType]
-	if !exists {
-		return fmt.Errorf("no provider found for %s", targetType.String())
+	provider, found := c.providers[elemType]
+	if !found {
+		return errors.New("no provider found for " + elemType.String())
 	}
 
-	instance, err := factory(c)
+	instance, err := provider(c)
 	if err != nil {
 		return err
 	}
-	ptr.Elem().Set(reflect.ValueOf(instance))
+	c.instances[elemType] = instance
+	reflect.ValueOf(target).Elem().Set(reflect.ValueOf(instance))
 	return nil
 }
 
